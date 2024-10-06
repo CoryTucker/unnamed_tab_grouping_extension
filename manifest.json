@@ -1,0 +1,27 @@
+{
+  "manifest_version": 2,
+  "name": "unnamedTaGrEx",
+  "version": "1",
+
+  "description": "Unnamed tab grouping extension",
+
+  "icons": {
+    "48": "icons/border-48.png"
+  },
+
+  "background": {
+    "scripts": ["unnamedTaGrEx-background.js"],
+    "persistent": false,
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["*://*.mozilla.org/*"],
+      "js": ["unnamedTaGrEx.js"]
+    }
+  ],
+  "permissions": [
+    "storage"
+  ]
+}
