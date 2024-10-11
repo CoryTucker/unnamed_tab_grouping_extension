@@ -20,13 +20,9 @@ browser.windows.getAll({}).then(windows => {
     storage.windows = windows;
 });
 
-console.log(storage)
-console.log(storage.groups.length)
 if (storage.groups.length === 0) {
-    browser.windows.getCurrent().then((window) => {
-        console.log(storage)
-        console.log(storage.groups.length)
-        storage.groups.push(new tabGroup('steve', window.id));
+    browser.windows.getCurrent({populate: true}).then((window) => {
+        storage.groups.push(new tabGroup('steve', window));
     })
 }
 
@@ -38,15 +34,33 @@ class tabGroup {
     attachedWindowId
     attachedTabs
     status
-    constructor(name, attachedWindowId) {
+    constructor(name, window) {
         this.id = 0;
         this.name = name;
-        this.attachedWindowId = attachedWindowId;
-        browser.tabs.create({
+        this.attachedWindowId = window.id;
+        this.constructorContinued()
+    }
+    async constructorContinued(){
+        let tab = await browser.tabs.create({
             url: browser.runtime.getURL('options.html'),
             pinned: true,
             windowId: this.attachedWindowId,
-        }).then(tab =>{this.mainTabID = tab.id})
+        })
+        this.mainTabID = tab.id;
+        browser.runtime.onMessage.addListener(async (message, sender) => {
+            if (sender.tab.id === this.mainTabID) {
+                let window = await browser.windows.get(this.attachedWindowId, {populate: true})
+                return Promise.resolve({
+                    name: this.name,
+                    window: window
+                })
+            }
+        })
+        //browser.tabs.sendMessage(this.mainTabID, this.name).then(r => {})
+    }
+    async updateTab(message, sender){
+
+        return false
     }
     open(){}
     close(){}
@@ -55,7 +69,6 @@ class tabGroup {
     splitSubGroup(){}
     mergeSubGroup(){}
 }
-
 function addToStorage(name, data){
     // Get the current data from storage
     storage[name] = data
@@ -78,9 +91,9 @@ function getFromStorage(name, data){
 }
 
 // communication between open options tabs
-browser.runtime.onMessage.addListener((e) =>{
-    console.log("message", e)
-})
+// browser.runtime.onMessage.addListener((e) =>{
+//     console.log("message", e)
+// })
 
 browser.runtime.onSuspend.addListener((e) => {
     console.log("suspending");

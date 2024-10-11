@@ -13,6 +13,24 @@ async function restoreOptions() {
     document.querySelector("#colour").value = res.colour || 'Firefox red';
 }
 
-document.addEventListener('DOMContentLoaded', restoreOptions);
-document.querySelector("form").addEventListener("submit", saveOptions);
-browser.runtime.sendMessage("dQw4w9WgXcQ")
+function update(){
+    browser.runtime.sendMessage("dQw4w9WgXcQ").then(r => {
+        document.getElementById("name").innerHTML = r.name;
+        document.getElementById("tabList").innerHTML = ""
+        for (const tab of r.window.tabs) {
+            document.getElementById("tabList").innerHTML += "<li>" + tab.title + "</li>";
+        }
+    })
+}
+
+function updated(){
+
+}
+document.addEventListener("click", update);
+//document.addEventListener('DOMContentLoaded', restoreOptions);
+//document.querySelector("form").addEventListener("submit", saveOptions);
+update()
+
+// browser.runtime.onMessage.addListener((message) =>{
+//     console.log("message", message)
+// })ff
