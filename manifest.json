@@ -23,7 +23,8 @@
   ],
   "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "alarms"
   ],
   "options_ui": {
     "page": "options.html"
