@@ -4,6 +4,7 @@ let groups = [];
 
 void setup()
 async function setup() {
+    console.log("starting extension")
 // set up the autosave alarm
     browser.alarms.create("autosave", {periodInMinutes: 1})
 
@@ -11,75 +12,116 @@ async function setup() {
     let browser_storage = await browser.storage.local.get()
 // validate format of storage from browser
 // check if each of the required values exist
-    if (Object.values(browser_storage).indexOf("tabs") > -1)
-        tabs = browser_storage.tabs;
-    if (Object.values(browser_storage).indexOf("windows") > -1)
-        windows = browser_storage.windows;
-    if (Object.values(browser_storage).indexOf("groups") > -1)
-        groups = browser_storage.groups;
-
-// get initial list of tabs and windows on extension start
-    browser.tabs.query({}).then(foundTabs => {
-        // sort foundTabs by ID
-        foundTabs = foundTabs.sort((a, b) => a.id - (b.id));
-        //merge found tabs with existing tabs in storage
-        // let storedTabsI = 0
-        // let foundTabsI = 0
-        // while (true) {
-        //     if(foundTabsI.id === storedTabsI.id){
-        //         // todo check this works as intended on browser start
-        //         tabs[storedTabsI] = foundTabs[foundTabsI];
-        //     }else if(foundTabsI.id === storedTabsI.id){
-        //
-        //     }
-        // }
-
-        // https://stackoverflow.com/questions/1584370/how-to-merge-two-arrays-in-javascript-and-de-duplicate-items
-        const merge = (a, b, predicate = (a, b) => a === b) => {
-            const c = [...a]; // copy to avoid side effects
-            // add all items from B to copy C if they're not already present
-            b.forEach((bItem) => (c.some((cItem) => predicate(bItem, cItem)) ? null : c.push(bItem)))
-            return c;
+    if (Object.keys(browser_storage).indexOf("tabs") > -1) tabs = browser_storage.tabs;
+    // if (Object.keys(browser_storage).indexOf("windows") > -1) windows = browser_storage.windows;
+    if (Object.keys(browser_storage).indexOf("groups") > -1){
+        for (const foundGroup of browser_storage.groups) {
+            groups.push(tabGroup.fromJson(foundGroup));
         }
-        for (let tab of foundTabs) {
-            // todo - verify that tabs keep their ids across browser restarts
-            tabs = foundTabs;
-        }
-    });
-    browser.windows.getAll({}).then(foundWindows => {
-        windows = foundWindows;
-    });
+    }
+    // get initial list of tabs and windows on extension start
+    let foundTabs = await browser.tabs.query({})
+    let foundWindows= await browser.windows.getAll({})
+    console.log(foundWindows)
+    // tabs
+    // merge found tabs with existing tabs in storage
+    // todo - verify that tabs keep their ids across browser restarts
+    tabs = merge(tabs, foundTabs, (a,b) => a.id === b.id);
+    // sort tabs by id
+    tabs = tabs.sort((a, b) => a.id - (b.id));
+
+    // windows
+    // merge found tabs with existing tabs in storage
+    // todo - verify that windows keep their ids across browser restarts
+    windows = merge(windows, foundWindows, (a,b) => a.id === b.id);
+    windows.sort((a, b) => a.id - (b.id));
+
     // temp - create initial test group
     if (groups.length === 0) {
-        browser.windows.getCurrent({populate: true}).then((window) => {
-            groups.push(new tabGroup('steve', window));
-        })
+        let window = await browser.windows.getCurrent({populate: true})
+        groups.push(new tabGroup('steve', window));
+        console.log('created group because current groups length is zero');
     }
+    console.log(groups)
+
+    // check if all windows have a group by matching each item in the list
+    // there is almost certainly a much better way of doing this, but I bet in the backend they do the same thing.
+    let groupsCounter = 0
+    let windowsCounter = 0
+    let breakNextLoop = false
+
+    // temp until I stop the while loop from breaking shit
+    let emergencyCounter = 0;
+    while (true) {
+        emergencyCounter += 1;
+        //console.log(windowsCounter, groupsCounter)
+        let windowID = null
+        try { windowID = windows[windowsCounter].id; }
+        catch(e) {if (e.name !== "TypeError") throw e}
+        let groupsID = null
+        try { groupsID = groups[groupsCounter].attachedWindowId; }
+        catch(e) {if (e.name !== "TypeError") throw e}
+        //console.log(windowID, groupsID)
+        // if we match a window and group, initialise the group
+        if (windowID === groupsID) {
+            console.log('Matched')
+            // console.log(groups)
+            // console.log(groupsCounter)
+            // console.log(groups[groupsCounter])
+            // todo init group
+            groups[groupsCounter].initialize()
+            groupsCounter += 1;
+            windowsCounter += 1;
+        }
+        // if there is a missing group, create it
+        else if (windowID < groupsID || groupsID === -1) {
+            console.log('Missing Group')
+            // todo complete initialisation
+            groups.splice(groupsCounter, 0, new tabGroup('unnamedGroup', windows[windowsCounter], true));
+            //console.log(e)
+            windowsCounter += 1;
+            groupsCounter += 1;
+        }
+        // if there is an extra group, initialise it as inactive
+        else if (groupsID < windowID){
+            console.log('Extra Group')
+            groupsCounter += 1;
+        }
+
+        // if we're at the end of both lists break
+        // (we want to be able to go off the end of either list but not both)
+        // however, since one of these values will have incremented in the last loop, we still want to loop one more
+        // time.
+        if (breakNextLoop) break
+        if (windowsCounter >= windows.length - 1 && groupsCounter >= groups.length - 1) {
+            breakNextLoop = true
+        }
+        if (emergencyCounter > 100) {
+            console.log('emergency broken')
+            break
+        }
+    }
+    saveStorage()
+}
+// extension based functions
+
+// called whenever we need to save to persistent browser storage so we don't lose data when something crashes
+function saveStorage(){
+    void browser.storage.local.set({
+        "tabs": tabs,
+        "windows": windows,
+        "groups": groups,
+    })
 }
 
-function addToStorage(name, data){
-    // Get the current data from storage
-    storage[name] = data
-    // browser.storage.local.get().then((result) => {
-    //     // Initialize the list of entries if it doesn't exist
-    //     let entries = result.entries || {};
-    //     // Add the new item to the list
-    //     entries[name] = data;
-    //
-    //     // Save the updated list back to storage
-    //     browser.storage.local.set(entries).then(r => {});
-    //     browser.storage.local.get().then((result) => {
-    //         console.log(result);
-    //     });
-    // });
+// random functions
+// https://stackoverflow.com/questions/1584370/how-to-merge-two-arrays-in-javascript-and-de-duplicate-items
+const merge = (a, b, predicate = (a, b) => a === b) => {
+    const c = [...a]; // copy to avoid side effects
+    // add all items from B to copy C if they're not already present
+    b.forEach((bItem) => (c.some((cItem) => predicate(bItem, cItem)) ? null : c.push(bItem)))
+    return c;
 }
-function getFromStorage(name){
-    return storage[name];
-}
-// communication between open options tabs
-// browser.runtime.onMessage.addListener((e) =>{
-//     console.log("message", e)
-// })
 
 class tabGroup {
     id
@@ -88,32 +130,29 @@ class tabGroup {
     isSubGroupOf
     attachedWindowId
     attachedTabs
-    status
-    constructor(name, window) {
+    active
+    constructor(name, window, initialize) {
         this.id = 0;
         this.name = name;
-        this.attachedWindowId = window.id;
-        void this.constructorContinued()
+        if (window !== null) {
+            this.attachedWindowId = window.id;
+            void this.constructorContinued()
+            if(initialize){void this.initialize()}
+        }
     }
     async constructorContinued(){
+    }
+    // initialise group when group created from blank window or on browser start
+    async initialize(){
+        // look for existing options tab
+        // create options tab
         let tab = await browser.tabs.create({
             url: browser.runtime.getURL('options.html'),
             pinned: true,
+            index: 0,
             windowId: this.attachedWindowId,
         })
         this.mainTabID = tab.id;
-
-        // when we receive a message from the newly created tab, respond with data about the group
-        browser.runtime.onMessage.addListener(async (message, sender) => {
-            if (sender.tab.id === this.mainTabID) {
-                let window = await browser.windows.get(this.attachedWindowId, {populate: true})
-                return Promise.resolve({
-                    name: this.name,
-                    window: window
-                })
-            }
-            return false
-        })
     }
     async updateTab(message, sender){
         return false
@@ -124,17 +163,43 @@ class tabGroup {
     splitFromWindow(){}
     splitSubGroup(){}
     mergeSubGroup(){}
+
+    static fromJson(JSONGroup) {
+        //console.log(JSONGroup)
+        let result = new tabGroup(JSONGroup.name, null, false);
+        result.id = JSONGroup.id;
+        result.mainTabID = JSONGroup.mainTabID;
+        result.attachedWindowId = JSONGroup.attachedWindowId;
+        result.attachedTabsId = JSONGroup.attachedWindowId;
+        // todo finish or improve
+        return result;
+    }
 }
 
 // add various listeners
 browser.alarms.onAlarm.addListener(alarmInfo => {
+    console.log("alarm", alarmInfo);
     if (alarmInfo.name === "autosave"){
-        void browser.storage.local.set({
-            "tabs": tabs,
-            "windows": windows,
-            "groups": groups,
-        })
+        console.log("alarm", alarmInfo);
+        saveStorage();
+        return Promise.resolve()
     }
+    return false
+})
+
+// when we receive a message from a newly created group control tab, respond with data about the group
+browser.runtime.onMessage.addListener(async (message, sender) => {
+    // find appropriate group
+    for (const group of groups) {
+        if (sender.tab.id === group.mainTabID) {
+            let window = await browser.windows.get(group.attachedWindowId, {populate: true})
+            return Promise.resolve({
+                name: group.name,
+                window: window
+            })
+        }
+    }
+
     return false
 })
 
@@ -149,7 +214,7 @@ browser.tabs.onCreated.addListener((tab) => {
     // replace tab id with tab name to correctly store items in the storage
     let tabId = tab.id
     // todo tabList.push(tabId);
-    addToStorage("+" + tabId, tab);
+    //addToStorage("+" + tabId, tab);
     //console.log("Tab created:", tab);
 });
 
